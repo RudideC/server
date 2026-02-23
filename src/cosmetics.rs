@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
-use tokio::sync::Mutex;
 
-use crate::user::get_put;
+use crate::{types::UUID, user::get_put};
 
 pub const CLOAKS: &[&str] = &[
     "mercedes_flow",
@@ -26,7 +25,7 @@ pub enum CosmeticKind {
 // Buy a cosmetic
 pub async fn buy(
     kind: CosmeticKind,
-    uuid: Arc<Mutex<String>>,
+    uuid: UUID,
     item_id: String,
     pool: Arc<SqlitePool>,
 ) -> Result<String, String> {
@@ -65,7 +64,7 @@ pub async fn buy(
 // Equip a cosmetic
 pub async fn equip(
     kind: CosmeticKind,
-    uuid: Arc<Mutex<String>>,
+    uuid: UUID,
     item_id: String,
     pool: Arc<SqlitePool>,
 ) -> Result<String, String> {

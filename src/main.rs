@@ -1,21 +1,18 @@
 mod cosmetics;
 mod methods;
+mod types;
 mod user;
 
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use serde::{Deserialize, Serialize};
 use session_rs::{server::SessionServer, session::Session};
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
 
-use crate::user::User;
-
-type SessionMap = Arc<Mutex<HashMap<String, HashSet<Session>>>>;
+use crate::{
+    types::{SessionMap, UUID},
+    user::User,
+};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> session_rs::Result<()> {
@@ -33,7 +30,7 @@ async fn main() -> session_rs::Result<()> {
 
                 Box::pin(async move {
                     println!("Connected");
-                    let uuid: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+                    let uuid = Arc::new(Mutex::new(String::new()));
 
                     session
                         .on_close({
@@ -202,10 +199,10 @@ async fn main() -> session_rs::Result<()> {
 
 async fn send_emote(
     sessions: SessionMap,
-    uuid: Arc<Mutex<String>>,
-    emote: methods::ClientEmote,
+    uuid: UUID,
+    emote: types::EmoteRequest,
 ) -> Result<String, String> {
-    let emote_event = methods::EventEmote {
+    let emote_event = types::EventEmote {
         from: uuid.lock().await.clone(),
         emote: emote.emote,
     };
@@ -213,28 +210,30 @@ async fn send_emote(
     for i in emote.targets {
         if let Some(sessions) = sessions.lock().await.get_mut(&i) {
             let emote_event = emote_event.clone();
-            sessions.retain(|s| {
-                let notify_result = tokio::runtime::Handle::current()
-                    .block_on(s.notify::<methods::EmoteEvent>(emote_event.clone()));
+            let mut bad_sessions = Vec::new();
 
-                notify_result.is_ok()
-            });
+            for s in sessions.iter() {
+                if s.notify::<methods::EmoteEvent>(emote_event.clone())
+                    .await
+                    .is_err()
+                {
+                    bad_sessions.push(s.clone());
+                }
+            }
+
+            for s in bad_sessions {
+                sessions.remove(&s);
+            }
         }
     }
 
     Ok(format!("Cool"))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct MinecraftAuthResponse {
-    pub id: String,
-    pub name: String,
-}
-
 async fn authenticate(
     sessions: SessionMap,
     session: Session,
-    uuid: Arc<Mutex<String>>,
+    uuid: UUID,
     session_token: String,
     pool: Arc<SqlitePool>,
 ) -> Result<User, String> {
@@ -258,7 +257,7 @@ async fn authenticate(
         ));
     }
 
-    let auth: MinecraftAuthResponse = response
+    let auth: types::MinecraftAuthResponse = response
         .json()
         .await
         .map_err(|_| "Unable to parse auth response".to_string())?;
