@@ -1,3 +1,7 @@
+pub mod auth;
+pub mod emote;
+pub mod user;
+
 use serde::{Deserialize, Serialize};
 use session_rs::Method;
 
@@ -6,7 +10,7 @@ use crate::{
     user::User,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Auth;
 
 impl Method for Auth {
@@ -16,7 +20,7 @@ impl Method for Auth {
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetCloak;
 
 impl Method for SetCloak {
@@ -26,7 +30,7 @@ impl Method for SetCloak {
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetHat;
 
 impl Method for SetHat {
@@ -36,7 +40,7 @@ impl Method for SetHat {
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyCloak;
 
 impl Method for BuyCloak {
@@ -46,7 +50,7 @@ impl Method for BuyCloak {
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuyHat;
 
 impl Method for BuyHat {
@@ -56,32 +60,52 @@ impl Method for BuyHat {
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Emote;
 
 impl Method for Emote {
     const NAME: &'static str = "emote";
     type Request = EmoteRequest;
-    type Response = String;
+    type Response = ();
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmoteEvent;
 
 impl Method for EmoteEvent {
     const NAME: &'static str = "emote_event";
     type Request = EventEmote;
-    type Response = String;
+    type Response = ();
+    type Error = ();
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPlayer;
+
+impl Method for GetPlayer {
+    const NAME: &'static str = "player";
+    type Request = String;
+    type Response = Option<User>;
     type Error = String;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player;
 
 impl Method for Player {
     const NAME: &'static str = "player";
-    type Request = String;
-    type Response = Option<User>;
+    type Request = User;
+    type Response = ();
+    type Error = ();
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendPlayer;
+
+impl Method for SendPlayer {
+    const NAME: &'static str = "send_player";
+    type Request = Vec<String>;
+    type Response = ();
     type Error = String;
 }

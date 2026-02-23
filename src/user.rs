@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub cloak: String,
     pub hat: String,
