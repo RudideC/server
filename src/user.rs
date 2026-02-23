@@ -9,27 +9,9 @@ pub struct User {
     pub hats: Vec<String>,
 }
 
-pub const CLOAKS: &[&str] = &[
-    "mercedes_flow",
-    "glitch",
-    "crimson_mark",
-    "bmw",
-    "amg",
-    "amg_petronas",
-    "ferrari",
-    "redbull",
-];
-
-pub const HATS: &[&str] = &["horns_black", "horns_white", "halo", "halo_black"];
-
-pub enum CosmeticKind {
-    Hat,
-    Cloak,
-}
-
 // Initialize SQLite connection pool
-pub async fn init_db(db_path: &str) -> SqlitePool {
-    let pool = SqlitePool::connect(db_path).await.unwrap();
+pub async fn init_db() -> SqlitePool {
+    let pool = SqlitePool::connect("sqlite:users.db").await.unwrap();
     sqlx::query(include_str!("schema.sql"))
         .execute(&pool)
         .await

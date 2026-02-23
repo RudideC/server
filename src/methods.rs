@@ -27,7 +27,7 @@ impl Method for SetCloak {
 pub struct SetHat;
 
 impl Method for SetHat {
-    const NAME: &'static str = "set_cloak";
+    const NAME: &'static str = "set_hat";
     type Request = String;
     type Response = String;
     type Error = String;
@@ -37,7 +37,7 @@ impl Method for SetHat {
 pub struct BuyCloak;
 
 impl Method for BuyCloak {
-    const NAME: &'static str = "set_cloak";
+    const NAME: &'static str = "buy_cloak";
     type Request = String;
     type Response = String;
     type Error = String;
@@ -47,7 +47,7 @@ impl Method for BuyCloak {
 pub struct BuyHat;
 
 impl Method for BuyHat {
-    const NAME: &'static str = "set_cloak";
+    const NAME: &'static str = "buy_hat";
     type Request = String;
     type Response = String;
     type Error = String;

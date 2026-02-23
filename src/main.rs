@@ -7,13 +7,14 @@ use std::{pin::Pin, sync::Arc};
 use serde::{Deserialize, Serialize};
 use session_rs::server::SessionServer;
 use sqlx::SqlitePool;
+use tokio::sync::Mutex;
 use ureq::http::StatusCode;
 
 use crate::user::User;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> session_rs::Result<()> {
-    let pool = Arc::new(init_db().await);
+    let pool = Arc::new(user::init_db().await);
     let server = SessionServer::bind("127.0.0.1:8080").await?;
 
     server
@@ -24,13 +25,90 @@ async fn main() -> session_rs::Result<()> {
 
                 Box::pin(async move {
                     println!("Connected");
+                    let uuid: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
 
                     session
-                        .on::<methods::Auth, _>(move |req_id, token| {
-                            let req_id = req_id.clone();
-                            let token = token.clone();
+                        .on::<methods::Auth, _>({
+                            let pool = Arc::clone(&pool);
+                            let uuid = Arc::clone(&uuid);
 
-                            authenticate(req_id.clone(), token, Arc::clone(&pool))
+                            move |_, token| authenticate(uuid.clone(), token, pool.clone())
+                        })
+                        .await;
+
+                    session
+                        .on::<methods::BuyCloak, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::buy(
+                                    cosmetics::CosmeticKind::Cloak,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on::<methods::BuyHat, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::buy(
+                                    cosmetics::CosmeticKind::Hat,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on::<methods::SetCloak, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::equip(
+                                    cosmetics::CosmeticKind::Cloak,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on::<methods::SetHat, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::equip(
+                                    cosmetics::CosmeticKind::Hat,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
                         })
                         .await;
 
@@ -48,7 +126,7 @@ struct MinecraftAuthResponse {
 }
 
 async fn authenticate(
-    _req_id: u32,
+    uuid: Arc<Mutex<String>>,
     session_token: String,
     pool: Arc<SqlitePool>,
 ) -> Result<User, String> {
@@ -69,14 +147,7 @@ async fn authenticate(
         .read_json()
         .map_err(|_| "Unable to parse auth response".to_string())?;
 
-    user::get_put(&auth.id, &pool).await
-}
+    *uuid.lock().await = auth.id.clone();
 
-async fn init_db() -> SqlitePool {
-    let pool = SqlitePool::connect("sqlite:cosmetics.db").await.unwrap();
-    sqlx::query(include_str!("schema.sql"))
-        .execute(&pool)
-        .await
-        .unwrap();
-    pool
+    user::get_put(&auth.id, &pool).await
 }
