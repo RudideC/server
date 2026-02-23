@@ -38,3 +38,18 @@ pub struct PlayerStream {
     pub uuid: String,
     pub name: String,
 }
+
+pub fn format_uuid(input: &str) -> Result<String, &'static str> {
+    if input.len() != 32 {
+        return Err("Input must be exactly 32 hex characters");
+    }
+
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &input[0..8],
+        &input[8..12],
+        &input[12..16],
+        &input[16..20],
+        &input[20..32],
+    ))
+}

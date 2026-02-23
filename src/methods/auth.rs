@@ -36,10 +36,17 @@ pub async fn authenticate(
         ));
     }
 
-    let auth: crate::types::MinecraftAuthResponse = response
-        .json()
+    let auth = response
+        .json::<crate::types::MinecraftAuthResponse>()
         .await
-        .map_err(|_| "Unable to parse auth response".to_string())?;
+        .map_err(|_| "Unable to parse auth response".to_string())
+        .and_then(|auth| {
+            let id = crate::types::format_uuid(&auth.id)?;
+            Ok(crate::types::MinecraftAuthResponse {
+                name: auth.name,
+                id,
+            })
+        })?;
 
     *uuid.lock().await = auth.id.clone();
     *name.lock().await = auth.name.clone();
@@ -51,7 +58,7 @@ pub async fn authenticate(
         .or_default()
         .insert(session);
 
-    println!("Authenticated as {:?}", auth);
+    println!("{:?}", auth);
 
     crate::user::get_put(&auth.id, &pool).await
 }

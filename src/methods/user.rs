@@ -27,15 +27,16 @@ pub async fn send_user(
     targets: Vec<String>,
     pool: Arc<SqlitePool>,
 ) -> Result<(), String> {
+    println!("send player {targets:?}");
+    let uuid = uuid.lock().await.to_string();
+
     let user = PlayerStream {
-        player: crate::user::get(&uuid.lock().await, pool.as_ref()).await?,
-        uuid: uuid.lock().await.clone(),
+        player: crate::user::get(&uuid, pool.as_ref()).await?,
+        uuid: uuid.clone(),
         name: name.lock().await.clone(),
     };
 
-    println!("{user:?}");
-
-    println!("{targets:?}");
+    println!("ready {targets:?}");
 
     for target in targets {
         if let Some(sessions) = sessions.lock().await.get_mut(&target) {
@@ -52,6 +53,8 @@ pub async fn send_user(
             }
         }
     }
+
+    println!("sent");
 
     Ok(())
 }
