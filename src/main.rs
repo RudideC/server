@@ -27,6 +27,7 @@ async fn main() -> session_rs::Result<()> {
                 Box::pin(async move {
                     println!("Connected");
                     let uuid = Arc::new(Mutex::new(String::new()));
+                    let name = Arc::new(Mutex::new(String::new()));
 
                     session
                         .on_close({
@@ -63,13 +64,15 @@ async fn main() -> session_rs::Result<()> {
                         .on_request::<methods::Auth, _>({
                             let pool = Arc::clone(&pool);
                             let uuid = Arc::clone(&uuid);
+                            let sessions = Arc::clone(&sessions);
+                            let name = Arc::clone(&name);
                             let session = session.clone();
-                            let sessions = sessions.clone();
 
                             move |_, token| {
                                 methods::auth::authenticate(
                                     sessions.clone(),
                                     session.clone(),
+                                    name.clone(),
                                     uuid.clone(),
                                     token,
                                     pool.clone(),
@@ -188,9 +191,16 @@ async fn main() -> session_rs::Result<()> {
                             let sessions = Arc::clone(&sessions);
                             let pool = Arc::clone(&pool);
                             let uuid = Arc::clone(&uuid);
+                            let name = Arc::clone(&name);
 
                             move |_, targets| {
-                                methods::user::send_user(sessions.clone(), uuid.clone(), targets.clone(), pool.clone())
+                                methods::user::send_user(
+                                    sessions.clone(),
+                                    name.clone(),
+                                    uuid.clone(),
+                                    targets.targets.clone(),
+                                    pool.clone(),
+                                )
                             }
                         })
                         .await;

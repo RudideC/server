@@ -11,6 +11,7 @@ use crate::{
 pub async fn authenticate(
     sessions: SessionMap,
     session: Session,
+    name: UUID,
     uuid: UUID,
     session_token: String,
     pool: Arc<SqlitePool>,
@@ -41,6 +42,7 @@ pub async fn authenticate(
         .map_err(|_| "Unable to parse auth response".to_string())?;
 
     *uuid.lock().await = auth.id.clone();
+    *name.lock().await = auth.name.clone();
 
     sessions
         .lock()

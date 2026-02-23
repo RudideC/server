@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use session_rs::Method;
 
 use crate::{
-    types::{EmoteRequest, EventEmote},
+    types::{EmoteRequest, EventEmote, PlayerStream},
     user::User,
 };
 
@@ -84,7 +84,7 @@ impl Method for EmoteEvent {
 pub struct GetPlayer;
 
 impl Method for GetPlayer {
-    const NAME: &'static str = "player";
+    const NAME: &'static str = "get_player";
     type Request = String;
     type Response = Option<User>;
     type Error = String;
@@ -95,7 +95,7 @@ pub struct Player;
 
 impl Method for Player {
     const NAME: &'static str = "player";
-    type Request = User;
+    type Request = PlayerStream;
     type Response = ();
     type Error = ();
 }
@@ -103,9 +103,14 @@ impl Method for Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendPlayer;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendPlayerRequest {
+    pub targets: Vec<String>,
+}
+
 impl Method for SendPlayer {
     const NAME: &'static str = "send_player";
-    type Request = Vec<String>;
+    type Request = SendPlayerRequest;
     type Response = ();
     type Error = String;
 }

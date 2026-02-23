@@ -4,7 +4,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     methods,
-    types::{SessionMap, UUID},
+    types::{PlayerStream, SessionMap, UUID},
     user::User,
 };
 
@@ -22,11 +22,20 @@ pub async fn get_user(
 
 pub async fn send_user(
     sessions: SessionMap,
+    name: UUID,
     uuid: UUID,
     targets: Vec<String>,
     pool: Arc<SqlitePool>,
 ) -> Result<(), String> {
-    let user = crate::user::get(&uuid.lock().await, pool.as_ref()).await?;
+    let user = PlayerStream {
+        player: crate::user::get(&uuid.lock().await, pool.as_ref()).await?,
+        uuid: uuid.lock().await.clone(),
+        name: name.lock().await.clone(),
+    };
+
+    println!("{user:?}");
+
+    println!("{targets:?}");
 
     for target in targets {
         if let Some(sessions) = sessions.lock().await.get_mut(&target) {

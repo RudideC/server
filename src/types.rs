@@ -7,6 +7,8 @@ use std::{
     sync::Arc,
 };
 
+use crate::user::User;
+
 pub type SessionMap = Arc<Mutex<HashMap<String, HashSet<Session>>>>;
 pub type UUID = Arc<Mutex<String>>;
 
@@ -28,4 +30,11 @@ pub struct EmoteRequest {
 pub struct EventEmote {
     pub emote: String,
     pub from: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayerStream {
+    pub player: User,
+    pub uuid: String,
+    pub name: String,
 }
