@@ -1,197 +1,116 @@
-mod buy;
-mod emote;
-pub mod player;
-mod set_cloak;
-mod set_hat;
-
-use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc, Mutex},
-};
+pub mod auth;
+pub mod emote;
+pub mod user;
 
 use serde::{Deserialize, Serialize};
+use session_rs::Method;
 
 use crate::{
-    encryption::ETcp,
-    parser::ParamMap,
-    response::{PlayerResponse, Response, Result},
+    types::{EmoteRequest, EventEmote, PlayerStream},
+    user::User,
 };
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct LocalPlayer {
-    pub id: String,
-    pub name: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Auth;
+
+impl Method for Auth {
+    const NAME: &'static str = "auth";
+    type Request = String;
+    type Response = User;
+    type Error = String;
 }
 
-pub type SocketMap = Arc<Mutex<HashMap<String, ETcp>>>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetCloak;
 
-pub struct Session {
-    pub session_token: String,
-    pub database: Arc<crate::database::Database>,
-    pub local_player: LocalPlayer,
-    sockets: SocketMap,
+impl Method for SetCloak {
+    const NAME: &'static str = "set_cloak";
+    type Request = String;
+    type Response = String;
+    type Error = String;
 }
 
-impl Session {
-    pub fn new(
-        mut stream: ETcp,
-        database: Arc<crate::database::Database>,
-        sockets: SocketMap,
-    ) -> Result<(Self, Response)> {
-        let (token_send, token_recv) =
-            mpsc::channel::<std::result::Result<String, crate::response::Error>>();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetHat;
 
-        let stream_2 = stream.try_clone()?;
-
-        std::thread::spawn(move || match stream.read() {
-            Ok(Some(session_token)) => token_send.send(Ok(session_token)),
-            _ => token_send.send(Err(crate::response::Error::InvalidHandshake(
-                "Failed to read session token".to_string(),
-            ))),
-        });
-
-        match token_recv.recv_timeout(std::time::Duration::from_secs(20)) {
-            Ok(Ok(session_token)) => {
-                // Validate session id
-                let response = minreq::get("https://api.minecraftservices.com/minecraft/profile")
-                    .with_header("Authorization", &format!("Bearer {session_token}"))
-                    .send()
-                    .map_err(|_| {
-                        crate::response::Error::InvalidSession(
-                            "Failed to validate session".to_string(),
-                        )
-                    })?;
-
-                // If the session is invalid, return an error
-                if response.status_code != 200 {
-                    return Err(crate::response::Error::InvalidSession(format!(
-                        "Invalid session status code: {}",
-                        response.status_code
-                    )));
-                }
-
-                // Parse the player data
-                let local_player: LocalPlayer = response.json().map_err(|_| {
-                    crate::response::Error::InvalidSession(
-                        "Failed to parse player data".to_string(),
-                    )
-                })?;
-
-                println!("[MOJANG] {} successfully logged on", &local_player.name);
-
-                let session = Self {
-                    session_token,
-                    database,
-                    local_player,
-                    sockets,
-                };
-
-                // Capture the player
-                match player::login(&session) {
-                    Ok(player) => {
-                        session.add_socket(stream_2);
-                        Ok((session, player))
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(crate::response::Error::Timeout(
-                "Session handshake timed out".to_string(),
-            )),
-            _ => Err(crate::response::Error::InvalidHandshake(
-                "Failed to receive handshake response".to_string(),
-            )),
-        }
-    }
-
-    pub fn handle_request(&self, method: &str, params: &HashMap<String, String>) -> Result {
-        match method {
-            "ping" => Ok(Response::Pong),
-
-            "set_cloak" => set_cloak::set_cloak(
-                self,
-                params.parse_param("cloak")?,
-                params
-                    .parse_param::<String>("notify")
-                    .unwrap_or_default()
-                    .split("$")
-                    .collect(),
-            ),
-
-            "set_hat" => set_hat::set_hat(
-                self,
-                params.parse_param("hat")?,
-                params
-                    .parse_param::<String>("notify")
-                    .unwrap_or_default()
-                    .split("$")
-                    .collect(),
-            ),
-
-            "emote" => emote::emote(
-                self,
-                params.parse_param("name")?,
-                params
-                    .parse_param::<String>("notify")
-                    .unwrap_or_default()
-                    .split("$")
-                    .collect(),
-            ),
-
-            "player" => player::player(self, params.parse_param("uuid")?),
-
-            "players" => {
-                let mut players: Vec<PlayerResponse> = Vec::new();
-                let uuids = params.parse_param::<String>("uuids")?;
-                if uuids.is_empty() {
-                    return Err(crate::response::Error::InvalidParameter {
-                        param: "uuids".to_string(),
-                        reason: "UUIDs list cannot be empty".to_string(),
-                    });
-                }
-                for uuid in uuids.split("$") {
-                    if uuid.is_empty() {
-                        return Err(crate::response::Error::InvalidParameter {
-                            param: "uuids".to_string(),
-                            reason: "UUID cannot be empty".to_string(),
-                        });
-                    }
-                    match player::player(self, uuid.to_string())? {
-                        Response::Player(p) => players.push(p),
-                        _ => {}
-                    }
-                }
-                Ok(Response::Players(players))
-            }
-
-            "buy_cloak" => buy::buy_cloak(self, params.parse_param("cloak")?),
-            "buy_hat" => buy::buy_hat(self, params.parse_param("hat")?),
-
-            _ => Err(crate::response::Error::InvalidMethod(method.to_string())),
-        }
-    }
+impl Method for SetHat {
+    const NAME: &'static str = "set_hat";
+    type Request = String;
+    type Response = String;
+    type Error = String;
 }
 
-impl Session {
-    pub fn add_socket(&self, sock: ETcp) {
-        self.sockets
-            .lock()
-            .unwrap()
-            .insert(self.local_player.id.clone(), sock);
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuyCloak;
 
-    pub fn remove_from_sockets(&self) {
-        self.sockets.lock().unwrap().remove(&self.local_player.id);
-    }
+impl Method for BuyCloak {
+    const NAME: &'static str = "buy_cloak";
+    type Request = String;
+    type Response = String;
+    type Error = String;
+}
 
-    pub fn notify(&self, players: &[&str], message: &str) -> Result<()> {
-        let mut sockets = self.sockets.lock().unwrap();
-        for player in players {
-            if let Some(i) = sockets.get_mut(&player.to_string()) {
-                i.send(message)
-                    .map_err(|e| crate::response::Error::DatabaseError(format!("{e}")))?;
-            }
-        }
-        Ok(())
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuyHat;
+
+impl Method for BuyHat {
+    const NAME: &'static str = "buy_hat";
+    type Request = String;
+    type Response = String;
+    type Error = String;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Emote;
+
+impl Method for Emote {
+    const NAME: &'static str = "emote";
+    type Request = EmoteRequest;
+    type Response = ();
+    type Error = String;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmoteEvent;
+
+impl Method for EmoteEvent {
+    const NAME: &'static str = "emote_event";
+    type Request = EventEmote;
+    type Response = ();
+    type Error = ();
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPlayer;
+
+impl Method for GetPlayer {
+    const NAME: &'static str = "get_player";
+    type Request = String;
+    type Response = Option<User>;
+    type Error = String;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player;
+
+impl Method for Player {
+    const NAME: &'static str = "player";
+    type Request = PlayerStream;
+    type Response = ();
+    type Error = ();
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendPlayer;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendPlayerRequest {
+    pub targets: Vec<String>,
+}
+
+impl Method for SendPlayer {
+    const NAME: &'static str = "send_player";
+    type Request = SendPlayerRequest;
+    type Response = ();
+    type Error = String;
 }

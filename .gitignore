@@ -17,3 +17,9 @@ target/
 #.idea/
 
 token.key
+
+# Added by cargo
+
+/target
+
+*.db

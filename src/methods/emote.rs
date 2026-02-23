@@ -1,14 +1,34 @@
-use crate::response::{Response, Result};
+use crate::types::{SessionMap, UUID};
 
-use super::Session;
+pub async fn send_emote(
+    sessions: SessionMap,
+    uuid: UUID,
+    emote: crate::types::EmoteRequest,
+) -> Result<(), String> {
+    let emote_event = crate::types::EventEmote {
+        from: uuid.lock().await.clone(),
+        emote: emote.emote,
+    };
 
-pub fn emote(session: &Session, emote: String, notify: Vec<&str>) -> Result {
-    if notify.len() > 0 {
-        session.notify(
-            &notify,
-            &format!("emote@uuid={}@name={emote}", session.local_player.id),
-        )?;
+    for target in emote.targets {
+        if let Some(sessions) = sessions.lock().await.get_mut(&target) {
+            let emote_event = emote_event.clone();
+            let mut bad_sessions = Vec::new();
+
+            for s in sessions.iter() {
+                if s.notify::<crate::methods::EmoteEvent>(emote_event.clone())
+                    .await
+                    .is_err()
+                {
+                    bad_sessions.push(s.clone());
+                }
+            }
+
+            for s in bad_sessions {
+                sessions.remove(&s);
+            }
+        }
     }
 
-    Ok(Response::Success)
+    Ok(())
 }

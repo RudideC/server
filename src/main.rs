@@ -1,114 +1,213 @@
-use std::{
-    net::{TcpListener, TcpStream},
-    sync::Arc,
-    time::{Duration, Instant},
-};
+mod cosmetics;
+mod methods;
+mod types;
+mod user;
 
-use openssl::{pkey::Private, rsa::Rsa};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use crate::methods::SocketMap;
+use session_rs::server::SessionServer;
+use tokio::sync::Mutex;
 
-pub mod cosmetics;
-pub mod database;
-pub mod encryption;
-pub mod methods;
-pub mod parser;
-pub mod response;
+use crate::types::SessionMap;
 
-fn main() -> Result<(), response::Error> {
-    let rsa = Rsa::generate(2048).map_err(|e| {
-        response::Error::EncryptionError(format!("Failed to generate RSA keys: {}", e))
-    })?;
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> session_rs::Result<()> {
+    let pool = Arc::new(user::init_db().await);
+    let server = SessionServer::bind("127.0.0.1:8080").await?;
 
-    let client =
-        mongodb::sync::Client::with_uri_str("mongodb://admin:admin@10.7.1.21/").map_err(|e| {
-            response::Error::DatabaseError(format!("Failed to connect to MongoDB: {}", e))
-        })?;
-    let database = Arc::new(database::Database::new(&client));
-    let sockets = SocketMap::default();
+    let sessions: SessionMap = Arc::new(Mutex::new(HashMap::new()));
 
-    let listener = TcpListener::bind("0.0.0.0:8080").map_err(|e| {
-        response::Error::NetworkError(format!("Failed to bind to port 8080: {}", e))
-    })?;
+    server
+        .session_loop({
+            let pool = Arc::clone(&pool);
+            move |session, _| {
+                let pool = Arc::clone(&pool);
+                let sessions = Arc::clone(&sessions);
 
-    println!("Server listening on port 8080");
+                Box::pin(async move {
+                    println!("Connected");
+                    let uuid = Arc::new(Mutex::new(String::new()));
+                    let name = Arc::new(Mutex::new(String::new()));
 
-    for stream_result in listener.incoming() {
-        let stream = match stream_result {
-            Ok(stream) => stream,
-            Err(e) => {
-                eprintln!("Failed to accept connection: {}", e);
-                continue;
-            }
-        };
+                    session
+                        .on_close({
+                            let session = session.clone();
+                            let uuid = uuid.clone();
+                            let sessions = Arc::clone(&sessions);
 
-        println!("New connection");
-        let database = Arc::clone(&database);
-        let sockets = Arc::clone(&sockets);
-        let rsa = rsa.clone();
+                            move || {
+                                let uuid = uuid.clone();
+                                let sessions = Arc::clone(&sessions);
+                                let session = session.clone();
 
-        std::thread::spawn(move || {
-            if let Err(e) = handle_client(stream, rsa, database, sockets) {
-                eprintln!("Client error: {}", e);
-            }
-        });
-    }
+                                Box::pin(async move {
+                                    let uuid_lock = uuid.lock().await;
+                                    if !uuid_lock.is_empty() {
+                                        if let Some(sessions) =
+                                            sessions.lock().await.get_mut(uuid_lock.as_str())
+                                        {
+                                            sessions.remove(&session);
+                                        }
+                                    }
+                                    Ok(())
+                                })
+                            }
+                        })
+                        .await;
 
-    Ok(())
-}
-
-fn handle_client(
-    stream: TcpStream,
-    rsa: Rsa<Private>,
-    database: Arc<database::Database>,
-    sockets: SocketMap,
-) -> Result<(), response::Error> {
-    let mut stream = encryption::handshake(stream, rsa)?;
-    let mut last_activity = Instant::now();
-
-    match methods::Session::new(stream.try_clone()?, database, sockets) {
-        Ok((session, res)) => {
-            stream.send(res)?;
-
-            loop {
-                // Check for inactivity
-                if last_activity.elapsed() > Duration::from_secs(60) {
-                    println!(
-                        "[MOJANG] {} inactive for too long",
-                        session.local_player.name
+                    session.start_ping(
+                        tokio::time::Duration::from_secs(30),
+                        tokio::time::Duration::from_secs(5),
                     );
-                    methods::player::logout(&session)?;
-                    println!("[MOJANG] {} went offline", session.local_player.name);
-                    break;
-                }
 
-                match stream.read()? {
-                    None => {
-                        // Client disconnected
-                        println!("[MOJANG] {} disconnected", session.local_player.name);
-                        methods::player::logout(&session)?;
-                        println!("[MOJANG] {} went offline", session.local_player.name);
-                        break;
-                    }
-                    Some(request_string) => {
-                        last_activity = Instant::now();
-                        let (method, params) = parser::parse(&request_string)?;
-                        let response = session.handle_request(&method, &params);
+                    session
+                        .on_request::<methods::Auth, _>({
+                            let pool = Arc::clone(&pool);
+                            let uuid = Arc::clone(&uuid);
+                            let sessions = Arc::clone(&sessions);
+                            let name = Arc::clone(&name);
+                            let session = session.clone();
 
-                        stream.send(match response {
-                            Ok(response) => response.to_string(),
-                            Err(e) => format!("!{e}"),
-                        })?;
-                    }
-                }
+                            move |_, token| {
+                                methods::auth::authenticate(
+                                    sessions.clone(),
+                                    session.clone(),
+                                    name.clone(),
+                                    uuid.clone(),
+                                    token,
+                                    pool.clone(),
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::BuyCloak, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::buy(
+                                    cosmetics::CosmeticKind::Cloak,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::BuyHat, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::buy(
+                                    cosmetics::CosmeticKind::Hat,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::SetCloak, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::equip(
+                                    cosmetics::CosmeticKind::Cloak,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::SetHat, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::equip(
+                                    cosmetics::CosmeticKind::Hat,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::Emote, _>({
+                            let sessions = Arc::clone(&sessions);
+                            let uuid = Arc::clone(&uuid);
+
+                            move |_, emote| {
+                                let sessions = Arc::clone(&sessions);
+                                let uuid = Arc::clone(&uuid);
+
+                                methods::emote::send_emote(sessions, uuid, emote)
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::GetPlayer, _>({
+                            let sessions = Arc::clone(&sessions);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, uuid| {
+                                methods::user::get_user(
+                                    sessions.clone(),
+                                    uuid.clone(),
+                                    pool.clone(),
+                                )
+                            }
+                        })
+                        .await;
+
+                    session
+                        .on_request::<methods::SendPlayer, _>({
+                            let sessions = Arc::clone(&sessions);
+                            let pool = Arc::clone(&pool);
+                            let uuid = Arc::clone(&uuid);
+                            let name = Arc::clone(&name);
+
+                            move |_, targets| {
+                                methods::user::send_user(
+                                    sessions.clone(),
+                                    name.clone(),
+                                    uuid.clone(),
+                                    targets.targets.clone(),
+                                    pool.clone(),
+                                )
+                            }
+                        })
+                        .await;
+
+                    Ok::<(), session_rs::Error>(())
+                }) as Pin<Box<dyn Future<Output = _> + Send>>
             }
-        }
-        Err(e) => {
-            stream.send(format!("!{e}"))?;
-            println!("Disconnected");
-            stream.close()?;
-        }
-    }
-
-    Ok(())
+        })
+        .await
 }
