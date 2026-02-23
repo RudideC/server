@@ -11,11 +11,15 @@ pub struct User {
 
 // Initialize SQLite connection pool
 pub async fn init_db() -> SqlitePool {
-    let pool = SqlitePool::connect("sqlite:users.db").await.unwrap();
+    let pool = SqlitePool::connect("sqlite://users.db?mode=rwc")
+        .await
+        .expect("Failed to open database");
+
     sqlx::query(include_str!("schema.sql"))
         .execute(&pool)
         .await
-        .unwrap();
+        .expect("Failed to run schema");
+
     pool
 }
 
