@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use session_rs::server::SessionServer;
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
-use ureq::http::StatusCode;
 
 use crate::user::User;
 
@@ -27,8 +26,15 @@ async fn main() -> session_rs::Result<()> {
                     println!("Connected");
                     let uuid: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
 
+                    session.on_close(async || Ok(println!("Closed"))).await;
+
+                    session.start_ping(
+                        tokio::time::Duration::from_secs(30),
+                        tokio::time::Duration::from_secs(5),
+                    );
+
                     session
-                        .on::<methods::Auth, _>({
+                        .on_request::<methods::Auth, _>({
                             let pool = Arc::clone(&pool);
                             let uuid = Arc::clone(&uuid);
 
@@ -37,7 +43,7 @@ async fn main() -> session_rs::Result<()> {
                         .await;
 
                     session
-                        .on::<methods::BuyCloak, _>({
+                        .on_request::<methods::BuyCloak, _>({
                             let uuid = Arc::clone(&uuid);
                             let pool = Arc::clone(&pool);
 
@@ -56,7 +62,7 @@ async fn main() -> session_rs::Result<()> {
                         .await;
 
                     session
-                        .on::<methods::BuyHat, _>({
+                        .on_request::<methods::BuyHat, _>({
                             let uuid = Arc::clone(&uuid);
                             let pool = Arc::clone(&pool);
 
@@ -75,7 +81,7 @@ async fn main() -> session_rs::Result<()> {
                         .await;
 
                     session
-                        .on::<methods::SetCloak, _>({
+                        .on_request::<methods::SetCloak, _>({
                             let uuid = Arc::clone(&uuid);
                             let pool = Arc::clone(&pool);
 
@@ -94,7 +100,7 @@ async fn main() -> session_rs::Result<()> {
                         .await;
 
                     session
-                        .on::<methods::SetHat, _>({
+                        .on_request::<methods::SetHat, _>({
                             let uuid = Arc::clone(&uuid);
                             let pool = Arc::clone(&pool);
 
@@ -130,12 +136,20 @@ async fn authenticate(
     session_token: String,
     pool: Arc<SqlitePool>,
 ) -> Result<User, String> {
-    let mut response = ureq::get("https://api.minecraftservices.com/minecraft/profile")
-        .header("Authorization", &format!("Bearer {session_token}"))
-        .call()
+    if !uuid.lock().await.is_empty() {
+        return Err(format!("Already authenticated"));
+    }
+
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get("https://api.minecraftservices.com/minecraft/profile")
+        .bearer_auth(&session_token)
+        .send()
+        .await
         .map_err(|_| "Failed to validate session".to_string())?;
 
-    if response.status() != StatusCode::OK {
+    if !response.status().is_success() {
         return Err(format!(
             "Authentication failed with code {}",
             response.status()
@@ -143,8 +157,8 @@ async fn authenticate(
     }
 
     let auth: MinecraftAuthResponse = response
-        .body_mut()
-        .read_json()
+        .json()
+        .await
         .map_err(|_| "Unable to parse auth response".to_string())?;
 
     *uuid.lock().await = auth.id.clone();
