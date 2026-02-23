@@ -52,3 +52,23 @@ impl Method for BuyHat {
     type Response = String;
     type Error = String;
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Emote;
+
+impl Method for Emote {
+    const NAME: &'static str = "emote";
+    type Request = String;
+    type Response = String;
+    type Error = String;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EmoteEvent;
+
+impl Method for EmoteEvent {
+    const NAME: &'static str = "emote_event";
+    type Request = String;
+    type Response = String;
+    type Error = String;
+}

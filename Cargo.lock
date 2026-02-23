@@ -1757,9 +1757,9 @@ dependencies = [
 
 [[package]]
 name = "session-rs"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51e9fdc5adcdd0ddc8c5077df84a2158d2446780efdbee8c379573e9eed17094"
+checksum = "7166810f8fb16dd8df2796a217296c9c8a4a7d59c50df415cf758ebd2932003f"
 dependencies = [
  "base64",
  "rand 0.10.0",

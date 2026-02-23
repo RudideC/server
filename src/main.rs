@@ -2,31 +2,64 @@ mod cosmetics;
 mod methods;
 mod user;
 
-use std::{pin::Pin, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
-use session_rs::server::SessionServer;
+use session_rs::{server::SessionServer, session::Session};
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
 
 use crate::user::User;
+
+type SessionMap = Arc<Mutex<HashMap<String, HashSet<Session>>>>;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> session_rs::Result<()> {
     let pool = Arc::new(user::init_db().await);
     let server = SessionServer::bind("127.0.0.1:8080").await?;
 
+    let sessions: SessionMap = Arc::new(Mutex::new(HashMap::new()));
+
     server
         .session_loop({
             let pool = Arc::clone(&pool);
             move |session, _| {
                 let pool = Arc::clone(&pool);
+                let sessions = Arc::clone(&sessions);
 
                 Box::pin(async move {
                     println!("Connected");
                     let uuid: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
 
-                    session.on_close(async || Ok(println!("Closed"))).await;
+                    session
+                        .on_close({
+                            let session = session.clone();
+                            let uuid = uuid.clone();
+                            let sessions = Arc::clone(&sessions);
+
+                            move || {
+                                let uuid = uuid.clone();
+                                let sessions = Arc::clone(&sessions);
+                                let session = session.clone();
+
+                                Box::pin(async move {
+                                    let uuid_lock = uuid.lock().await;
+                                    if !uuid_lock.is_empty() {
+                                        if let Some(sessions) =
+                                            sessions.lock().await.get_mut(uuid_lock.as_str())
+                                        {
+                                            sessions.remove(&session);
+                                        }
+                                    }
+                                    Ok(())
+                                })
+                            }
+                        })
+                        .await;
 
                     session.start_ping(
                         tokio::time::Duration::from_secs(30),
@@ -37,8 +70,18 @@ async fn main() -> session_rs::Result<()> {
                         .on_request::<methods::Auth, _>({
                             let pool = Arc::clone(&pool);
                             let uuid = Arc::clone(&uuid);
+                            let session = session.clone();
+                            let sessions = sessions.clone();
 
-                            move |_, token| authenticate(uuid.clone(), token, pool.clone())
+                            move |_, token| {
+                                authenticate(
+                                    sessions.clone(),
+                                    session.clone(),
+                                    uuid.clone(),
+                                    token,
+                                    pool.clone(),
+                                )
+                            }
                         })
                         .await;
 
@@ -118,6 +161,25 @@ async fn main() -> session_rs::Result<()> {
                         })
                         .await;
 
+                    session
+                        .on_request::<methods::SetHat, _>({
+                            let uuid = Arc::clone(&uuid);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, item_id| {
+                                let pool = Arc::clone(&pool);
+                                let item_id = item_id.clone();
+
+                                cosmetics::equip(
+                                    cosmetics::CosmeticKind::Hat,
+                                    uuid.clone(),
+                                    item_id,
+                                    pool,
+                                )
+                            }
+                        })
+                        .await;
+
                     Ok::<(), session_rs::Error>(())
                 }) as Pin<Box<dyn Future<Output = _> + Send>>
             }
@@ -132,6 +194,8 @@ struct MinecraftAuthResponse {
 }
 
 async fn authenticate(
+    sessions: SessionMap,
+    session: Session,
     uuid: Arc<Mutex<String>>,
     session_token: String,
     pool: Arc<SqlitePool>,
@@ -162,6 +226,13 @@ async fn authenticate(
         .map_err(|_| "Unable to parse auth response".to_string())?;
 
     *uuid.lock().await = auth.id.clone();
+
+    sessions
+        .lock()
+        .await
+        .entry(auth.id.clone())
+        .or_default()
+        .insert(session);
 
     user::get_put(&auth.id, &pool).await
 }
