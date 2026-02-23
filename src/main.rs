@@ -180,6 +180,7 @@ async fn main() -> session_rs::Result<()> {
                     session
                         .on_request::<methods::Emote, _>({
                             let sessions = Arc::clone(&sessions);
+                            let uuid = Arc::clone(&uuid);
 
                             move |_, emote| {
                                 let sessions = Arc::clone(&sessions);
@@ -190,11 +191,34 @@ async fn main() -> session_rs::Result<()> {
                         })
                         .await;
 
+                    session
+                        .on_request::<methods::Player, _>({
+                            let sessions = Arc::clone(&sessions);
+                            let pool = Arc::clone(&pool);
+
+                            move |_, uuid: String| {
+                                get_user(sessions.clone(), uuid.clone(), pool.clone())
+                            }
+                        })
+                        .await;
+
                     Ok::<(), session_rs::Error>(())
                 }) as Pin<Box<dyn Future<Output = _> + Send>>
             }
         })
         .await
+}
+
+async fn get_user(
+    sessions: SessionMap,
+    uuid: String,
+    pool: Arc<SqlitePool>,
+) -> Result<Option<User>, String> {
+    if !sessions.lock().await.contains_key(&uuid) {
+        return Ok(None);
+    }
+
+    Ok(Some(user::get(&uuid, pool.as_ref()).await?))
 }
 
 async fn send_emote(

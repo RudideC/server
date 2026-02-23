@@ -75,3 +75,13 @@ impl Method for EmoteEvent {
     type Response = String;
     type Error = String;
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Player;
+
+impl Method for Player {
+    const NAME: &'static str = "player";
+    type Request = String;
+    type Response = Option<User>;
+    type Error = String;
+}
