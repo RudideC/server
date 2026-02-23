@@ -180,11 +180,49 @@ async fn main() -> session_rs::Result<()> {
                         })
                         .await;
 
+                    session
+                        .on_request::<methods::Emote, _>({
+                            let sessions = Arc::clone(&sessions);
+
+                            move |_, emote| {
+                                let sessions = Arc::clone(&sessions);
+                                let uuid = Arc::clone(&uuid);
+
+                                send_emote(sessions, uuid, emote)
+                            }
+                        })
+                        .await;
+
                     Ok::<(), session_rs::Error>(())
                 }) as Pin<Box<dyn Future<Output = _> + Send>>
             }
         })
         .await
+}
+
+async fn send_emote(
+    sessions: SessionMap,
+    uuid: Arc<Mutex<String>>,
+    emote: methods::ClientEmote,
+) -> Result<String, String> {
+    let emote_event = methods::EventEmote {
+        from: uuid.lock().await.clone(),
+        emote: emote.emote,
+    };
+
+    for i in emote.targets {
+        if let Some(sessions) = sessions.lock().await.get_mut(&i) {
+            let emote_event = emote_event.clone();
+            sessions.retain(|s| {
+                let notify_result = tokio::runtime::Handle::current()
+                    .block_on(s.notify::<methods::EmoteEvent>(emote_event.clone()));
+
+                notify_result.is_ok()
+            });
+        }
+    }
+
+    Ok(format!("Cool"))
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -233,6 +271,8 @@ async fn authenticate(
         .entry(auth.id.clone())
         .or_default()
         .insert(session);
+
+    println!("Authenticated as {:?}", auth);
 
     user::get_put(&auth.id, &pool).await
 }

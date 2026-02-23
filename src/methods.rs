@@ -54,11 +54,23 @@ impl Method for BuyHat {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ClientEmote {
+    pub emote: String,
+    pub targets: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventEmote {
+    pub emote: String,
+    pub from: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Emote;
 
 impl Method for Emote {
     const NAME: &'static str = "emote";
-    type Request = String;
+    type Request = ClientEmote;
     type Response = String;
     type Error = String;
 }
@@ -68,7 +80,7 @@ pub struct EmoteEvent;
 
 impl Method for EmoteEvent {
     const NAME: &'static str = "emote_event";
-    type Request = String;
+    type Request = EventEmote;
     type Response = String;
     type Error = String;
 }
