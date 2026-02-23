@@ -1,13 +1,7 @@
 use serde::{Deserialize, Serialize};
 use session_rs::Method;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuthResponse {
-    pub cloak: String,
-    pub hat: String,
-    pub cloaks: Vec<String>,
-    pub hats: Vec<String>,
-}
+use crate::user::User;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Auth;
@@ -15,7 +9,7 @@ pub struct Auth;
 impl Method for Auth {
     const NAME: &'static str = "auth";
     type Request = String;
-    type Response = AuthResponse;
+    type Response = User;
     type Error = String;
 }
 
