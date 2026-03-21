@@ -17,6 +17,7 @@ pub const CLOAKS: &[&str] = &[
     "black_hole_white",
     "albania_mark",
     "end",
+    "spanish_empire",
 ];
 
 pub const HATS: &[&str] = &[
