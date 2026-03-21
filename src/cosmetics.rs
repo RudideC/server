@@ -18,6 +18,7 @@ pub const CLOAKS: &[&str] = &[
     "albania_mark",
     "end",
     "spanish_empire",
+    "spain_flag",
 ];
 
 pub const HATS: &[&str] = &[
