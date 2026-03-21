@@ -15,9 +15,19 @@ pub const CLOAKS: &[&str] = &[
     "black_hole_amethyst",
     "black_hole_flame",
     "black_hole_white",
+    "albania_mark",
+    "end",
 ];
 
-pub const HATS: &[&str] = &["horns_black", "horns_white", "halo", "halo_black"];
+pub const HATS: &[&str] = &[
+    "horns_black",
+    "horns_white",
+    "halo_white",
+    "halo_black",
+    "horns_end",
+    "halo_end",
+    "bucket_black",
+];
 
 pub enum CosmeticKind {
     Hat,
