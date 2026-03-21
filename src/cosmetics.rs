@@ -27,6 +27,7 @@ pub const HATS: &[&str] = &[
     "horns_end",
     "halo_end",
     "bucket_black",
+    "bucket_end"
 ];
 
 pub enum CosmeticKind {
