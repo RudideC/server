@@ -18,6 +18,7 @@ pub const CLOAKS: &[&str] = &[
     "albania_mark",
     "end",
     "spanish_empire",
+    "spain_flag"
 ];
 
 pub const HATS: &[&str] = &[
@@ -28,8 +29,7 @@ pub const HATS: &[&str] = &[
     "horns_end",
     "halo_end",
     "bucket_black",
-    "bucket_end",
-    "spanish_empire",
+    "bucket_end"
 ];
 
 pub enum CosmeticKind {
